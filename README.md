@@ -1,5 +1,6 @@
 # STERO_24z_KacperBielak_PiotrPatek
-
+Piotr Patek
+Kacper Bielak
 
 
 ## Getting started
