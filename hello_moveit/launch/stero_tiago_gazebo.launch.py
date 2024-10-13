@@ -85,8 +85,8 @@ def declare_actions(
         'GAZEBO_MODEL_PATH', model_path)
 
     gazebo = include_scoped_launch_py_description(
-        pkg_name='pal_gazebo_worlds',
-        paths=['launch', 'pal_gazebo.launch.py'],
+        pkg_name='hello_moveit',
+        paths=['launch', 'stero_pal_gazebo.launch.py'],
         env_vars=[gazebo_model_path_env_var],
         launch_arguments={
             "world_name":  launch_args.world_name,

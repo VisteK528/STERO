@@ -31,7 +31,7 @@ def start_gzserver(context, *args, **kwargs):
     pkg_path = get_package_share_directory('pal_gazebo_worlds')
     priv_pkg_path = ''
     try:
-        priv_pkg_path = get_package_share_directory('pal_gazebo_worlds_private')
+        priv_pkg_path = get_package_share_directory('hello_moveit')
     except Exception:
         pass
 
