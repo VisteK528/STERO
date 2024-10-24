@@ -78,11 +78,15 @@ def generate_launch_description():
 
     # Add pal_gazebo_worlds path
     pkg_path = get_package_share_directory('pal_gazebo_worlds')
+    our_package_path = get_package_share_directory('hello_moveit')
+
     model_path += os.path.join(pkg_path, 'models')
+    
     resource_path += pkg_path
 
     if 'GAZEBO_MODEL_PATH' in environ:
         model_path += pathsep+environ['GAZEBO_MODEL_PATH']
+        model_path += pathsep+os.path.join(our_package_path, 'models')
     if 'GAZEBO_RESOURCE_PATH' in environ:
         resource_path += pathsep+environ['GAZEBO_RESOURCE_PATH']
 

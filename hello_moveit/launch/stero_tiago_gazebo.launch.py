@@ -77,7 +77,7 @@ def declare_actions(
     robot_name = 'tiago'
     packages = ['tiago_description', 'pmb2_description',
                 'pal_hey5_description', 'pal_gripper_description',
-                'pal_robotiq_description']
+                'pal_robotiq_description', 'hello_moveit']
 
     model_path = get_model_paths(packages)
 
@@ -97,8 +97,8 @@ def declare_actions(
     launch_description.add_action(gazebo)
 
     navigation = include_scoped_launch_py_description(
-        pkg_name='tiago_2dnav',
-        paths=['launch', 'tiago_nav_bringup.launch.py'],
+        pkg_name='hello_moveit',
+        paths=['launch', 'stero_tiago_nav_bringup.launch.py'],
         launch_arguments={
             "robot_name":  robot_name,
             "is_public_sim": launch_args.is_public_sim,
