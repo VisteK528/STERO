@@ -4785,5 +4785,6 @@
       <pose>0.685550 0.044936 0.517499 -1.570796 0 0</pose>
     </model>
     <plugin name="gazebo_ros_state" filename="libgazebo_ros_state.so"/>
+    <plugin name="gazebo_grasp_fix" filename="libgazebo_grasp_fix.so"/>
   </world>
 </sdf>
