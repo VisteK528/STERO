@@ -13,7 +13,7 @@ find_package(moveit_visual_tools REQUIRED)
 find_package(gazebo_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 
-add_executable(one_grasp src/one_grasp.cpp)
+add_executable(one_grasp src/one_grasp.cpp src/src/one_grasp_utils.cpp)
 target_include_directories(one_grasp PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
