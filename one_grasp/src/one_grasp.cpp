@@ -253,13 +253,24 @@ int main(int argc, char * argv[])
         rclcpp::shutdown();
     }
 
-
-//    planning_scene_interface.addCollisionObjects({cube_collision_object_2});
-//    move_group_interface.attachObject("cube2", "arm_7_link");
-
+    std::vector<std::string> touch_links = {"gripper_left_finger_link", "gripper_right_finger_link"};
 
     // Move 5cm above
     move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.1, 0, 0)));
+    if(static_cast<bool>(move_group_interface.plan(plan))){
+        planning_scene_interface.addCollisionObjects({cube_collision_object});
+        move_group_interface.attachObject("cube", "arm_7_link", touch_links);
+        move_group_interface.execute(plan);
+    }
+    else{
+        // Shutdown ROS
+        executor.cancel();
+        spinner.join();
+        rclcpp::shutdown();
+    }
+
+    // Move 5cm left
+    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.1, 0, 0) * Eigen::Translation3d(0, 0, 0.2)));
     if(static_cast<bool>(move_group_interface.plan(plan))){
         move_group_interface.execute(plan);
     }
@@ -270,10 +281,12 @@ int main(int argc, char * argv[])
         rclcpp::shutdown();
     }
 
+
+
     // Detach object
-//    move_group_interface.detachObject({"cube2"});
     move_group_interface_gripper.setJointValueTarget(std::vector<double>({0.044, 0.04}));
     if(static_cast<bool>(move_group_interface_gripper.plan(plan))){
+        move_group_interface.detachObject({"cube"});
         move_group_interface_gripper.execute(plan);
     }
     else{
