@@ -12,11 +12,16 @@ find_package(rclcpp REQUIRED)
 find_package(moveit_visual_tools REQUIRED)
 find_package(gazebo_msgs REQUIRED)
 find_package(tf2 REQUIRED)
+include_directories(include)
+FILE(GLOB_RECURSE INCLUDE_FILES "include/one_grasp/*.hpp")
 
-add_executable(one_grasp src/one_grasp.cpp src/src/one_grasp_utils.cpp)
+add_executable(one_grasp src/one_grasp.cpp src/one_grasp_utils.cpp)
+target_sources(one_grasp PRIVATE ${INCLUDE_FILES})
+
 target_include_directories(one_grasp PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
+
 target_compile_features(one_grasp PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(
   one_grasp
@@ -27,8 +32,20 @@ ament_target_dependencies(
   "tf2"
 )
 
+# Install the executable
 install(TARGETS one_grasp
-  DESTINATION lib/${PROJECT_NAME})
+        DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install the include directory
+install(DIRECTORY include/
+        DESTINATION include/${PROJECT_NAME}
+)
+
+# Install the launch files
+install(DIRECTORY launch
+        DESTINATION share/${PROJECT_NAME}
+)
 
 
 install(DIRECTORY launch DESTINATION  share/${PROJECT_NAME})

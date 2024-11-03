@@ -4,14 +4,17 @@
 #include <moveit_visual_tools/moveit_visual_tools.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <gazebo_msgs/gazebo_msgs/srv/get_entity_state.hpp>
-#include <geometry_msgs/geometry_msgs/msg/pose_stamped.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
-//#include <moveit_msgs/moveit_msgs/msg/grasp.hpp>
 #include <thread>
 #include <Eigen/Eigen>
+#include "../include/one_grasp/one_grasp_utils.hpp"
 
 
 using namespace std::literals::chrono_literals;
+
+constexpr double MAX_RADIUS = 0.75;
+constexpr double GRIPPER_OPEN = 0.044;
+constexpr double GRIPPER_CLOSED = 0.033;
 
 int main(int argc, char * argv[])
 {
@@ -22,16 +25,16 @@ int main(int argc, char * argv[])
     rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
     );
 
-
-    // Create a ROS logger
     auto const logger = rclcpp::get_logger("one_grasp");
 
-    RCLCPP_INFO(logger, "Starting node...");
+    RCLCPP_INFO(logger, "Starting the one_grasp one");
+
 
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
     auto spinner = std::thread([&executor]() { executor.spin(); });
 
+    // Move group interfaces, planning scene interface setup
     using moveit::planning_interface::MoveGroupInterface;
     auto move_group_interface = MoveGroupInterface(node, "arm_torso");
     auto move_group_interface_gripper = MoveGroupInterface(node, "gripper");
@@ -43,7 +46,7 @@ int main(int argc, char * argv[])
     move_group_interface_gripper.setMaxAccelerationScalingFactor(0.6);
     moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
 
-
+    // Visual tools setup
     auto moveit_visual_tools = moveit_visual_tools::MoveItVisualTools{
             node, "base_footprint", rviz_visual_tools::RVIZ_MARKER_TOPIC,
             move_group_interface.getRobotModel()};
@@ -59,66 +62,35 @@ int main(int argc, char * argv[])
 
     Eigen::Isometry3d T_arm7_link_arm_tool_link = Eigen::Translation3d(0, 0, 0.046) * Eigen::Quaterniond(-0.5, 0.5, 0.5, 0.5).normalized();
 
-    // Get position of cube and table from the world in base_footprint frame
-    RCLCPP_INFO(logger, "Getting position of table in base_footprint frame...");
-    request->name = "table::link1";
-    request->reference_frame = "base_footprint";
-    while(!client->wait_for_service(std::chrono::seconds(1s))){
-        if(!rclcpp::ok()){
-            RCLCPP_ERROR(logger, "Interrupted. Exiting.");
-            return 0;
-        }
-        RCLCPP_INFO(logger, "service not available, waiting...");
+    // Get position of table with respect to base_footprint frame
+    auto table_result = getItemPosition(logger, client, "table::link1", "base_footprint");
+    if(table_result.has_value())
+    {
+        T_B_table = table_result.value();
+    }
+    else
+    {
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
-    auto future_result1 = client->async_send_request(request);
-    if(future_result1.wait_for(3s) == std::future_status::ready){
-        auto resp = future_result1.get();
-        tf2::fromMsg(resp->state.pose, T_B_table);
-    }else{
-        RCLCPP_ERROR(logger, "Failed to call service /get_entity_state");
-
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+    // Get position of green cube 3  with respect to base_footprint frame
+    auto cube_result = getItemPosition(logger, client, "green_cube_3::link", "base_footprint");
+    if(cube_result.has_value())
+    {
+        T_B_O = cube_result.value();
     }
-
-
-    RCLCPP_INFO(logger, "Getting position of green_cube_3 in base_footprint frame...");
-    request->name = "green_cube_3::link";
-    request->reference_frame = "base_footprint";
-
-    while(!client->wait_for_service(std::chrono::seconds(1s))){
-        if(!rclcpp::ok()){
-            RCLCPP_ERROR(logger, "Interrupted. Exiting.");
-            return 0;
-        }
-        RCLCPP_INFO(logger, "service not available, waiting...");
-    }
-
-    auto future_result = client->async_send_request(request);
-    if(future_result.wait_for(3s) == std::future_status::ready){
-        auto resp = future_result.get();
-        tf2::fromMsg(resp->state.pose, T_B_O);
-    }else{
-        RCLCPP_ERROR(logger, "Failed to call service /get_entity_state");
-
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+    else
+    {
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
     // Check if object is inside specified workspace
     Eigen::Vector3d cube_position = T_B_O.translation();
-    const double max_radius = 0.75;
-
-    if(std::pow(cube_position.x(), 2) + std::pow(cube_position.y(), 2) > max_radius){
+    if(std::pow(cube_position.x(), 2) + std::pow(cube_position.y(), 2) > MAX_RADIUS){
         RCLCPP_ERROR(logger, "Cube is too far from the robot base and thus cannot be reached! Exiting...");
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
         return 0;
     }
 
@@ -178,7 +150,7 @@ int main(int argc, char * argv[])
     planning_scene_interface.applyCollisionObject(cube_collision_object);
 
     // Move to the starting position
-    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    MoveGroupInterface::Plan plan;
     move_group_interface.setJointValueTarget({0.350, 1.5708, 0.5585, 0, 0.5585, -1.5708, 1.3963, 0});
     if(static_cast<bool>(move_group_interface.plan(plan))){
         move_group_interface.execute(plan);
@@ -196,19 +168,16 @@ int main(int argc, char * argv[])
     moveit_visual_tools.trigger();
 
 
-    // Gripping section (planning)
 
 
     // Open gripper
-    move_group_interface_gripper.setJointValueTarget(std::vector<double>({0.044, 0.044}));
+    move_group_interface_gripper.setJointValueTarget(std::vector<double>({GRIPPER_OPEN, GRIPPER_OPEN}));
     if(static_cast<bool>(move_group_interface_gripper.plan(plan))){
         move_group_interface_gripper.execute(plan);
     }
     else{
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
     move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_pre));
@@ -216,10 +185,8 @@ int main(int argc, char * argv[])
         move_group_interface.execute(plan);
     }
     else{
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
     // Move to grip
@@ -228,10 +195,8 @@ int main(int argc, char * argv[])
         move_group_interface.execute(plan);
     }
     else{
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
     planning_scene_interface.removeCollisionObjects({"cube"});
@@ -242,65 +207,60 @@ int main(int argc, char * argv[])
     move_group_interface_gripper.setMaxAccelerationScalingFactor(0.1);
 
     // Catch the object
-    move_group_interface_gripper.setJointValueTarget(std::vector<double>({0.034, 0.034}));
+    move_group_interface_gripper.setJointValueTarget(std::vector<double>({GRIPPER_CLOSED, GRIPPER_CLOSED}));
     if(static_cast<bool>(move_group_interface_gripper.plan(plan))){
         move_group_interface_gripper.execute(plan);
     }
     else{
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
+    // Move the cube 5cm above the surface of the table
+    // First plan the move without cube attached to the arm and then before the execution move it upwards
     std::vector<std::string> touch_links = {"gripper_left_finger_link", "gripper_right_finger_link"};
-
-    // Move 5cm above
-    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.1, 0, 0)));
+    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.05, 0, 0)));
     if(static_cast<bool>(move_group_interface.plan(plan))){
+        // Attach cube
         planning_scene_interface.addCollisionObjects({cube_collision_object});
         move_group_interface.attachObject("cube", "arm_7_link", touch_links);
+
+        // Execute move
         move_group_interface.execute(plan);
     }
     else{
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
-    // Move 5cm left
+    // ===================================== Any manipulations with the cube ===========================================
+
     move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.1, 0, 0) * Eigen::Translation3d(0, 0, 0.2)));
     if(static_cast<bool>(move_group_interface.plan(plan))){
         move_group_interface.execute(plan);
     }
     else{
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
-
+    // ===================================== Manipulations end =========================================================
 
     // Detach object
     move_group_interface_gripper.setJointValueTarget(std::vector<double>({0.044, 0.04}));
     if(static_cast<bool>(move_group_interface_gripper.plan(plan))){
+        // Detach the cube
         move_group_interface.detachObject({"cube"});
+
+        // Execute the move
         move_group_interface_gripper.execute(plan);
     }
     else{
-        // Shutdown ROS
-        executor.cancel();
-        spinner.join();
-        rclcpp::shutdown();
+        shutdownExecutor(executor, spinner);
+        return 0;
     }
 
     RCLCPP_INFO(logger, "Finished all jobs! Exiting...");
-
-    // Shutdown ROS
-    executor.cancel();
-    spinner.join();
-    rclcpp::shutdown();
+    shutdownExecutor(executor, spinner);
     return 0;
 }
