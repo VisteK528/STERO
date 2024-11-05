@@ -7,7 +7,7 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <thread>
 #include <Eigen/Eigen>
-#include "../include/one_grasp/one_grasp_utils.hpp"
+#include "../include/pick_place//one_grasp_utils.hpp"
 
 
 using namespace std::literals::chrono_literals;
@@ -27,7 +27,7 @@ int main(int argc, char * argv[])
 
     auto const logger = rclcpp::get_logger("pick_place");
 
-    RCLCPP_INFO(logger, "Starting the pick_place one");
+    RCLCPP_INFO(logger, "Starting the pick_place");
 
 
     rclcpp::executors::SingleThreadedExecutor executor;
@@ -203,8 +203,8 @@ int main(int argc, char * argv[])
     move_group_interface.setMaxVelocityScalingFactor(0.4);
     move_group_interface.setMaxAccelerationScalingFactor(0.2);
 
-    move_group_interface_gripper.setMaxVelocityScalingFactor(0.1);
-    move_group_interface_gripper.setMaxAccelerationScalingFactor(0.1);
+    move_group_interface_gripper.setMaxVelocityScalingFactor(0.4);
+    move_group_interface_gripper.setMaxAccelerationScalingFactor(0.2);
 
     // Catch the object
     move_group_interface_gripper.setJointValueTarget(std::vector<double>({GRIPPER_CLOSED, GRIPPER_CLOSED}));
@@ -215,13 +215,17 @@ int main(int argc, char * argv[])
         shutdownExecutor(executor, spinner);
         return 0;
     }
-
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    move_group_interface.setMaxVelocityScalingFactor(0.8);
+    move_group_interface.setMaxAccelerationScalingFactor(0.6);
+    move_group_interface_gripper.setMaxVelocityScalingFactor(0.8);
+    move_group_interface_gripper.setMaxAccelerationScalingFactor(0.6);
 
     // Move the cube 5cm above the surface of the table
     // First plan the move without cube attached to the arm and then before the execution move it upwards
     std::vector<std::string> touch_links = {"gripper_left_finger_link", "gripper_right_finger_link"};
-    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.05, 0, 0)));
+    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.1, 0.0, 0.0)));
     if(static_cast<bool>(move_group_interface.plan(plan))){
         // Attach cube
         planning_scene_interface.addCollisionObjects({cube_collision_object});
@@ -234,6 +238,36 @@ int main(int argc, char * argv[])
         shutdownExecutor(executor, spinner);
         return 0;
     }
+
+    // ===================================== Any manipulations with the cube ===========================================
+    double y_coord = T_B_O.translation().y();
+    const std::string info_string = "Moving cube from " + std::to_string(y_coord) + " to " + std::to_string(-y_coord);
+    RCLCPP_INFO(logger, info_string.c_str());
+
+//    graspFlippedY *= Eigen::Translation3d(0, 0, 2*y_coord);
+
+    // Move cube to flipped Y coordinate
+
+    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.1, 0.0, -2*y_coord)));
+    if(static_cast<bool>(move_group_interface.plan(plan))){
+        move_group_interface.execute(plan);
+    }
+    else{
+        shutdownExecutor(executor, spinner);
+        return 0;
+    }
+
+
+    // Move the cube 5cm down
+    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.005, 0.0, -2*y_coord)));
+    if(static_cast<bool>(move_group_interface.plan(plan))){
+        move_group_interface.execute(plan);
+    }
+    else{
+        shutdownExecutor(executor, spinner);
+        return 0;
+    }
+
 
     // ===================================== Manipulations end =========================================================
 
@@ -249,6 +283,12 @@ int main(int argc, char * argv[])
     else{
         shutdownExecutor(executor, spinner);
         return 0;
+    }
+
+    // Move to the start pos
+    move_group_interface.setJointValueTarget({0.350, 1.5708, 0.5585, 0, 0.5585, -1.5708, 1.3963, 0});
+    if(static_cast<bool>(move_group_interface.plan(plan))){
+        move_group_interface.execute(plan);
     }
 
     RCLCPP_INFO(logger, "Finished all jobs! Exiting...");

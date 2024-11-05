@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(one_grasp)
+project(better_grip)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -13,18 +13,18 @@ find_package(moveit_visual_tools REQUIRED)
 find_package(gazebo_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 include_directories(include)
-FILE(GLOB_RECURSE INCLUDE_FILES "include/one_grasp/*.hpp")
+FILE(GLOB_RECURSE INCLUDE_FILES "include/better_grip/*.hpp")
 
-add_executable(one_grasp src/one_grasp.cpp src/one_grasp_utils.cpp)
-target_sources(one_grasp PRIVATE ${INCLUDE_FILES})
+add_executable(better_grip src/better_grip.cpp src/one_grasp_utils.cpp)
+target_sources(better_grip PRIVATE ${INCLUDE_FILES})
 
-target_include_directories(one_grasp PUBLIC
+target_include_directories(better_grip PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 
-target_compile_features(one_grasp PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(better_grip PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(
-  one_grasp
+  better_grip
   "moveit_ros_planning_interface"
   "moveit_visual_tools"
   "rclcpp"
@@ -33,12 +33,12 @@ ament_target_dependencies(
 )
 
 # Install the executable
-install(TARGETS one_grasp
+install(TARGETS better_grip
         DESTINATION lib/${PROJECT_NAME}
 )
 
 # Install the include directory
-install(DIRECTORY include/
+install(DIRECTORY include
         DESTINATION include/${PROJECT_NAME}
 )
 

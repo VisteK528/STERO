@@ -7,7 +7,7 @@
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <thread>
 #include <Eigen/Eigen>
-#include "../include/one_grasp/one_grasp_utils.hpp"
+#include "../include/better_grip/one_grasp_utils.hpp"
 
 
 using namespace std::literals::chrono_literals;
@@ -21,13 +21,13 @@ int main(int argc, char * argv[])
     // Initialize ROS and create the Node
     rclcpp::init(argc, argv);
     auto const node = std::make_shared<rclcpp::Node>(
-    "pick_place",
+    "better_grip",
     rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
     );
 
-    auto const logger = rclcpp::get_logger("pick_place");
+    auto const logger = rclcpp::get_logger("better_grip");
 
-    RCLCPP_INFO(logger, "Starting the pick_place one");
+    RCLCPP_INFO(logger, "Starting the better_grip");
 
 
     rclcpp::executors::SingleThreadedExecutor executor;
@@ -57,8 +57,6 @@ int main(int argc, char * argv[])
     auto request = std::make_shared<gazebo_msgs::srv::GetEntityState::Request>();
     Eigen::Isometry3d T_B_O;
     Eigen::Isometry3d T_B_table;
-    Eigen::Isometry3d T_arm7_link_gr_O = Eigen::Translation3d(0.0, -0.001, 0.28) * Eigen::Quaternion(0.010816667244229508, -0.001105793243408453, -0.7079713127308999, -0.7061574875912008).normalized();
-    Eigen::Isometry3d T_arm7_link_pre_gr_O = Eigen::Translation3d(0.0, -0.001, 0.4) * Eigen::Quaternion(0.02604331807245956, -0.017432560531374066, -0.707375654300129, -0.7061427158305615).normalized();
 
     Eigen::Isometry3d T_arm7_link_arm_tool_link = Eigen::Translation3d(0, 0, 0.046) * Eigen::Quaterniond(-0.5, 0.5, 0.5, 0.5).normalized();
 
@@ -155,18 +153,18 @@ int main(int argc, char * argv[])
     if(static_cast<bool>(move_group_interface.plan(plan))){
         move_group_interface.execute(plan);
     }
-
+    //T_arm7_link_gr_O = T_B_O * Eigen::Isometry3d(Eigen::AngleAxisd(90.0/180.0*M_PI, Eigen::Vector3d::UnitZ()));
+    Eigen::Isometry3d T_arm7_link_gr_O = Eigen::Translation3d(0.0, -0.001, 0.28) * Eigen::Quaternion(0.010816667244229508, -0.001105793243408453, -0.7079713127308999, -0.7061574875912008).normalized();
+    Eigen::Isometry3d T_arm7_link_pre_gr_O = Eigen::Translation3d(0.0, -0.001, 0.4) * Eigen::Quaternion(0.02604331807245956, -0.017432560531374066, -0.707375654300129, -0.7061427158305615).normalized();
 
     RCLCPP_INFO(logger, "Computing position of arm_tool_link in base_footprint frame");
     Eigen::Isometry3d T_B_arm_tool_link_gr = T_B_O * T_arm7_link_gr_O.inverse() * T_arm7_link_arm_tool_link;
     Eigen::Isometry3d T_B_arm_tool_link_pre = T_B_O * T_arm7_link_pre_gr_O.inverse() * T_arm7_link_arm_tool_link;
 
-    RCLCPP_INFO(logger, "Publishing frames...");
     moveit_visual_tools.publishAxis(T_B_O);
     moveit_visual_tools.publishAxis(T_B_arm_tool_link_gr);
     moveit_visual_tools.publishAxis(T_B_arm_tool_link_pre);
     moveit_visual_tools.trigger();
-
 
 
 
@@ -200,13 +198,6 @@ int main(int argc, char * argv[])
     }
 
     planning_scene_interface.removeCollisionObjects({"cube"});
-    move_group_interface.setMaxVelocityScalingFactor(0.4);
-    move_group_interface.setMaxAccelerationScalingFactor(0.2);
-
-    move_group_interface_gripper.setMaxVelocityScalingFactor(0.1);
-    move_group_interface_gripper.setMaxAccelerationScalingFactor(0.1);
-
-    // Catch the object
     move_group_interface_gripper.setJointValueTarget(std::vector<double>({GRIPPER_CLOSED, GRIPPER_CLOSED}));
     if(static_cast<bool>(move_group_interface_gripper.plan(plan))){
         move_group_interface_gripper.execute(plan);
@@ -216,40 +207,9 @@ int main(int argc, char * argv[])
         return 0;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    // Move the cube 5cm above the surface of the table
-    // First plan the move without cube attached to the arm and then before the execution move it upwards
-    std::vector<std::string> touch_links = {"gripper_left_finger_link", "gripper_right_finger_link"};
-    move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_gr * Eigen::Translation3d(-0.05, 0, 0)));
-    if(static_cast<bool>(move_group_interface.plan(plan))){
-        // Attach cube
-        planning_scene_interface.addCollisionObjects({cube_collision_object});
-        move_group_interface.attachObject("cube", "arm_7_link", touch_links);
 
-        // Execute move
-        move_group_interface.execute(plan);
-    }
-    else{
-        shutdownExecutor(executor, spinner);
-        return 0;
-    }
 
-    // ===================================== Manipulations end =========================================================
-
-    // Detach object
-    move_group_interface_gripper.setJointValueTarget(std::vector<double>({0.044, 0.04}));
-    if(static_cast<bool>(move_group_interface_gripper.plan(plan))){
-        // Detach the cube
-        move_group_interface.detachObject({"cube"});
-
-        // Execute the move
-        move_group_interface_gripper.execute(plan);
-    }
-    else{
-        shutdownExecutor(executor, spinner);
-        return 0;
-    }
 
     RCLCPP_INFO(logger, "Finished all jobs! Exiting...");
     shutdownExecutor(executor, spinner);
