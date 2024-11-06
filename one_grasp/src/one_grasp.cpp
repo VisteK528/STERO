@@ -167,7 +167,21 @@ int main(int argc, char * argv[])
     moveit_visual_tools.publishAxis(T_B_arm_tool_link_pre);
     moveit_visual_tools.trigger();
 
+    double cube_x = T_B_O.translation().x();
+    double cube_y = T_B_O.translation().y();
+    double cube_z = T_B_O.translation().z();
 
+    Eigen::Quaterniond quaternion(T_B_O.rotation());
+    double q_w = quaternion.w();
+    double q_x = quaternion.x();
+    double q_y = quaternion.y();
+    double q_z = quaternion.z();
+
+    const std::string cube_position_str = "X: " + std::to_string(cube_x) + "\tY: " + std::to_string(cube_y) + "\tZ: " + std::to_string(cube_z);
+    const std::string cube_orientation_str = "Qw: " + std::to_string(q_w) + "\tQx: " + std::to_string(q_x) + "\tQy: " + std::to_string(q_y) + "\tQz: " + std::to_string(q_z);
+    RCLCPP_INFO(logger, "Pozycja kostki");
+    RCLCPP_INFO(logger, cube_position_str.c_str());
+    RCLCPP_INFO(logger, cube_orientation_str.c_str());
 
 
     // Open gripper
