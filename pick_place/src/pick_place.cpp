@@ -88,7 +88,7 @@ int main(int argc, char * argv[])
 
     // Check if object is inside specified workspace
     Eigen::Vector3d cube_position = T_B_O.translation();
-    if(std::pow(cube_position.x(), 2) + std::pow(cube_position.y(), 2) > MAX_RADIUS){
+    if(std::sqrt(std::pow(cube_position.x(), 2) + std::pow(cube_position.y(), 2)) > MAX_RADIUS){
         RCLCPP_ERROR(logger, "Cube is too far from the robot base and thus cannot be reached! Exiting...");
         shutdownExecutor(executor, spinner);
         return 0;

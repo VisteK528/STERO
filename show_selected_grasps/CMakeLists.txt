@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(show_side_grasps)
+project(show_selected_grasps)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -15,16 +15,16 @@ find_package(tf2 REQUIRED)
 find_package(moveit_msgs REQUIRED)
 
 include_directories(include)
-FILE(GLOB_RECURSE INCLUDE_FILES "include/show_side_grasps/*.hpp")
+FILE(GLOB_RECURSE INCLUDE_FILES "include/show_selected_grasps/*.hpp")
 
-add_executable(show_side_grasps src/show_side_grasps.cpp src/one_grasp_utils.cpp)
-target_sources(show_side_grasps PRIVATE ${INCLUDE_FILES})
-target_include_directories(show_side_grasps PUBLIC
+add_executable(show_selected_grasps src/show_selected_grasps.cpp src/one_grasp_utils.cpp)
+target_sources(show_selected_grasps PRIVATE ${INCLUDE_FILES})
+target_include_directories(show_selected_grasps PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
-target_compile_features(show_side_grasps PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+target_compile_features(show_selected_grasps PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(
-  show_side_grasps
+  show_selected_grasps
   "moveit_ros_planning_interface"
   "moveit_visual_tools"
   "rclcpp"
@@ -33,7 +33,7 @@ ament_target_dependencies(
   "moveit_msgs"
 )
 
-install(TARGETS show_side_grasps
+install(TARGETS show_selected_grasps
   DESTINATION lib/${PROJECT_NAME})
 
 # Install the include directory

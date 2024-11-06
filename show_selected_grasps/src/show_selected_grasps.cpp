@@ -7,7 +7,9 @@
 #include <thread>
 #include <gazebo_msgs/gazebo_msgs/srv/get_entity_state.hpp>
 #include <tf2_eigen/tf2_eigen.hpp>
-#include "../include/show_side_grasps/one_grasp_utils.hpp"
+#include "../include/show_selected_grasps/one_grasp_utils.hpp"
+#include <random>
+#include <functional>
 
 
 typedef enum {
@@ -27,17 +29,18 @@ typedef enum{
 
 } SUB_ROTATIONS;
 
+constexpr double MAX_RADIUS = 0.75;
 
 int main(int argc, char *argv[]) {
     // Initialize ROS and create the Node
     rclcpp::init(argc, argv);
     auto const node = std::make_shared<rclcpp::Node>(
-            "show_side_grasps",
+            "show_selected_grasps",
             rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true)
     );
 
     // Create a ROS logger
-    auto const logger = rclcpp::get_logger("show_side_grasps");
+    auto const logger = rclcpp::get_logger("show_selected_grasps");
 
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
@@ -112,6 +115,7 @@ int main(int argc, char *argv[]) {
     // Main rotations
     std::map<ROTATIONS, Eigen::Isometry3d> T_O_Ogr_rotations_dict;
     std::map<SUB_ROTATIONS , Eigen::Isometry3d> T_O_Ogr_subrotations_dict;
+
     T_O_Ogr_rotations_dict[ROT_Y_IDENTITY] = Eigen::Isometry3d(Eigen::Isometry3d::Identity());
     T_O_Ogr_rotations_dict[ROT_Y_90] = Eigen::Isometry3d(Eigen::AngleAxisd(90.0/180.0*M_PI, Eigen::Vector3d::UnitY()));
     T_O_Ogr_rotations_dict[ROT_Y_180] = Eigen::Isometry3d(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitY()));
@@ -121,34 +125,71 @@ int main(int argc, char *argv[]) {
     T_O_Ogr_subrotations_dict[ROT_Z_30] = Eigen::Isometry3d(Eigen::AngleAxisd(30.0/180.0*M_PI, Eigen::Vector3d::UnitZ()));
     T_O_Ogr_subrotations_dict[ROT_Z_MIN_30] = Eigen::Isometry3d(Eigen::AngleAxisd(-30.0/180.0*M_PI, Eigen::Vector3d::UnitZ()));
 
+    std::vector<Eigen::Isometry3d> wall_rotations;
+    wall_rotations.push_back(Eigen::Isometry3d(Eigen::Isometry3d::Identity()));
+    wall_rotations.push_back(Eigen::Isometry3d(Eigen::AngleAxisd(90.0/180.0*M_PI, Eigen::Vector3d::UnitZ())));
+    wall_rotations.push_back(Eigen::Isometry3d(Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitZ())));
+    wall_rotations.push_back(Eigen::Isometry3d(Eigen::AngleAxisd(270.0/180.0*M_PI, Eigen::Vector3d::UnitZ())));
+
+    wall_rotations.push_back(Eigen::Isometry3d(Eigen::AngleAxisd(90.0/180.0*M_PI, Eigen::Vector3d::UnitX())));
+    wall_rotations.push_back(Eigen::Isometry3d(Eigen::AngleAxisd(-90.0/180.0*M_PI, Eigen::Vector3d::UnitX())));
+
+
 
     auto jmg = move_group_interface.getRobotModel()->getJointModelGroup("gripper");
 
     std::vector<std::pair<Eigen::Isometry3d, Eigen::Isometry3d>> T_E_gr_pre_vect;
 
-    for(const auto& rot_pair: T_O_Ogr_rotations_dict){
-        auto rotation = rot_pair.second;
 
-        for(const auto& sub_rot_pair: T_O_Ogr_subrotations_dict){
-            auto sub_rotation = sub_rot_pair.second;
+    for(const auto& wall_rotation: wall_rotations){
+        for(const auto& rot_pair: T_O_Ogr_rotations_dict){
+            auto rotation = rot_pair.second;
 
-            std::pair<Eigen::Isometry3d, Eigen::Isometry3d> grasp_pair =  {T_B_O * rotation * sub_rotation * T_arm7_link_pre_gr_O.inverse() * T_arm7_link_arm_tool_link,
-                                                                           T_B_O * rotation * sub_rotation * T_arm7_link_gr_O.inverse() * T_arm7_link_arm_tool_link};
+            for(const auto& sub_rot_pair: T_O_Ogr_subrotations_dict){
+                auto sub_rotation = sub_rot_pair.second;
 
-            T_E_gr_pre_vect.push_back(grasp_pair);
+                std::pair<Eigen::Isometry3d, Eigen::Isometry3d> grasp_pair =  {T_B_O * wall_rotation * rotation * sub_rotation * T_arm7_link_pre_gr_O.inverse() * T_arm7_link_arm_tool_link,
+                                                                               T_B_O * wall_rotation * rotation * sub_rotation * T_arm7_link_gr_O.inverse() * T_arm7_link_arm_tool_link};
+
+                T_E_gr_pre_vect.push_back(grasp_pair);
+            }
         }
     }
 
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> distr(0, T_E_gr_pre_vect.size() - 1);
 
+    // Vector to store the elements that match the criteria
+    std::vector<std::pair<Eigen::Isometry3d, Eigen::Isometry3d>> matchedElements;
 
+    // Loop to pick elements randomly until we find 3 that match the criteria
+    while (matchedElements.size() < 3) {
+        int random_index = distr(gen);        // Pick a random index
+        std::pair<Eigen::Isometry3d, Eigen::Isometry3d> random_element = T_E_gr_pre_vect[random_index]; // Get the element at that index
+
+        // Check if the element matches the criteria
+        bool from_top = random_element.first.translation().z() > random_element.second.translation().z() + 0.02;
+        bool pre_grasp_range = std::sqrt(std::pow(random_element.first.translation().x(), 2) + std::pow(random_element.first.translation().y(), 2)) <= MAX_RADIUS;
+        bool grasp_range = std::sqrt(std::pow(random_element.second.translation().x(), 2) + std::pow(random_element.second.translation().y(), 2)) <= MAX_RADIUS;
+
+        if (from_top && pre_grasp_range && grasp_range) {
+            matchedElements.push_back(random_element);
+        }
+    }
+
+    int i = 1;
     // Display grasps
-    for(const auto& grasp_pair: T_E_gr_pre_vect){
+    for(const auto& grasp_pair: matchedElements){
         auto T_E_pre = grasp_pair.first;
         auto T_E_gr = grasp_pair.second;
 
         prompt("Press 'Next' in the RvizVisualToolsGui window to execute");
+        std::string grasp_numer_info_str = "Grasp number: " + std::to_string(i);
+        RCLCPP_INFO(logger, grasp_numer_info_str.c_str());
         publishGrasp(moveit_visual_tools, jmg, T_B_O, T_E_pre, T_E_gr);
         moveit_visual_tools.deleteAllMarkers();
+        ++i;
     }
 
 
