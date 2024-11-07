@@ -29,7 +29,7 @@ typedef enum{
 
 } SUB_ROTATIONS;
 
-constexpr double MAX_RADIUS = 0.75;
+constexpr double MAX_RADIUS = 0.9;
 constexpr double GRIPPER_OPEN = 0.044;
 constexpr double GRIPPER_CLOSED_3 = 0.03275;
 constexpr double GRIPPER_CLOSED_2 = 0.02775;
@@ -414,6 +414,15 @@ int main(int argc, char *argv[]) {
 
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
+        move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_pre_tower_base));
+        if(static_cast<bool>(move_group_interface.plan(plan))){
+            move_group_interface.execute(plan);
+        }
+        else{
+            shutdownExecutor(executor, spinner);
+            return 0;
+        }
+
         // Move to the start pos
         move_group_interface.setJointValueTarget({0.350, 1.5708, 0.5585, 0, 0.5585, -1.5708, 1.3963, 0});
         if(static_cast<bool>(move_group_interface.plan(plan))){
@@ -562,6 +571,15 @@ int main(int argc, char *argv[]) {
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+
+        move_group_interface.setPoseTarget(tf2::toMsg(T_B_arm_tool_link_pre_tower_level1));
+        if(static_cast<bool>(move_group_interface.plan(plan))){
+            move_group_interface.execute(plan);
+        }
+        else{
+            shutdownExecutor(executor, spinner);
+            return 0;
+        }
 
         // Move to the start pos
         move_group_interface.setJointValueTarget({0.350, 1.5708, 0.5585, 0, 0.5585, -1.5708, 1.3963, 0});
