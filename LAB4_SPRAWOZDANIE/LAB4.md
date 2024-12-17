@@ -109,6 +109,91 @@ Węzeł `/base_laser` w ROS2 odpowiada za obsługę danych z LIDAR-u. Subskrybuj
 Robot TIAGo posiada także elementy wizyjne takie jak kamery RGB-D. Dane z niej publikowane są na temacie `/head_front_camera/rgb/image_raw` oraz `/head_front_camera/depth_registered/image_raw`. Na zdjęciu powyżej przedstawiono obraz z kamery głębi wyświetlony w wizualizacji w programie RViz.
 
 # Zadanie 3
-Tworzenie pierwszego węzła do testu przestrzeni pracy:
-TODO://
-KOD, OPIS KODU, OPIS ZDJEC, ZDJECIA
+## Węzeł `pose_listener`
+
+Pierwszym z zaimplementowanych zgodnie z poleceniem węzłów był węzeł `pose_listener`. Jego jedynym celem był nasłuch wiadomości odometrii publikowanych na temacie `/mobile_base_controller/odom`, aby następnie wypisać je do terminala. 
+
+
+![alt text](images/nodes/pose_listener_output.png)
+
+Na rysunku powyżej zaprezentowano rezultat uruchomienia węzła `pose_listener` dla nieruchomego robota TIAGo.
+
+## Węzeł `shape_drawer_2`
+
+Drugim węzełem, który miał być zaimplementowany w trakcie laboratorium był węzeł `shape_drawer_2`. Zadanie przez niego realizowane było już bardziej złożone i polegało na "narysowaniu" zadanej przez prowadzącego figury geometrycznej poprzez jazdę po jej obwodzie. Autorzy niniejszego sprawozdania mieli za zadanie narysować w trakcie laboratorium sześciokąt.
+
+Tym razem oprócz subskrybcji tematu `/mobile_base_controller/odom` węzeł publikował sygnał sterujący dla bazy mobilnej na temacie `/cmd_vel`. 
+
+Wydzielono dwa fragmenty kodu, zgodnie z zasadą DRY, które wielokrotnie powtarzały się w czasie wykonania zadania i były to:
+- obrót do zadanego kąta `yaw`, będącego obrotem robota wokół osi OZ jego układu współrzędnych zgodnie z ruchem wskazówek zegara,
+- jazda do przodu o określoną odległość `x`
+
+### Obrót do zadanego kąta `yaw`
+Do realizacji zadania obrotu zaimplementowano prosty regulator dwustanowy. Aktualna orientacja robota w stopniach była cały czas uaktualniana w odpowiednim callback'u i zapisywana do zmiennej `self._angle`. W momencie, gdy metoda `_rotate_angle` była wywoływana z argumentem `deg` uruchamiany był regulator, który dążył do osiągnięcia zadanej orientacji `deg` z określoną tolerancją. W momencie, gdy warunek ten został spełniony następowano wyjście z pętli.
+
+```python
+def _rotate_angle(self, deg):
+    msg = Twist()
+
+    while True:
+        error = deg - self._angle
+        if error > 180:
+            error -= 360
+        elif error < -180:
+            error += 360
+
+        if abs(error) < self._tolerance:
+            self._publisher.publish(Twist())
+            break
+
+        angular_speed = 0.3
+        msg.angular.z = angular_speed if error > 0 else -angular_speed
+        self._publisher.publish(msg)
+        time.sleep(0.01)
+```
+
+### Jazda o określoną odleglość `x`
+W przypadku jazdy o zadaną odległość do przodu zadanie było jeszcze prostsze. Aktualne położenie robota tak samo jak orientacja uaktualniane są w odpowiednim callback'u i zapisywane są do zmiennych `self._x` oraz `self._y`.
+
+Następnie w momencie wywołania funkcji `_drive_length` system zapisuje położenie robota na starcie wykonania ruchu i zadaje liniową prędkość dla bazy robota w osi `OX`. Prędkość ta utrzymywana jest tak długo jak spełniany jest warunek:
+
+$$\sqrt{(x_s - x)^2 + (y_s - y)^2} < \text{meters}$$
+
+```python
+def _drive_length(self, meters):
+    start_x = self._x
+    start_y = self._y
+
+    msg = Twist()
+    msg.linear.x = 0.2
+
+    while math.sqrt(pow(start_x - self._x, 2) + pow(start_y - self._y, 2)) < meters:
+        self._publisher.publish(msg)
+        time.sleep(0.01)
+
+    self._publisher.publish(Twist())
+```
+
+### Główna pętla
+Cały program został zapisany w metodzie `run`, która została przedstawiona poniżej:
+
+
+```python
+def run(self):
+    self._rotate_angle(180)
+
+    for i in range(1, 7):
+        self._drive_length(1)
+
+        rotation_angle = 180 - 60 * i
+        if rotation_angle < 0:
+            rotation_angle += 360
+        self._rotate_angle(rotation_angle)
+
+    self.get_logger().info("Finished")
+```
+
+Rezultat wykonania programu w postaci sześciokątu złożonego z danych publikowanych na temacie odometrii i wyświetlonych w programie RViz został przedstawiony poniżej:
+
+
+![alt text](images/nodes/shape_drawer_2.png)

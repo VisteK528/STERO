@@ -56,7 +56,7 @@ class ShapeDrawer(Node):
                 self._publisher.publish(Twist())
                 break
 
-            angular_speed = 0.2
+            angular_speed = 0.3
             msg.angular.z = angular_speed if error > 0 else -angular_speed
             self._publisher.publish(msg)
             time.sleep(0.01)
@@ -66,7 +66,7 @@ class ShapeDrawer(Node):
         start_y = self._y
 
         msg = Twist()
-        msg.linear.x = 0.3
+        msg.linear.x = 0.2
 
         while math.sqrt(pow(start_x - self._x, 2) + pow(start_y - self._y, 2)) < meters:
             self._publisher.publish(msg)
@@ -75,7 +75,6 @@ class ShapeDrawer(Node):
         self._publisher.publish(Twist())
 
     def run(self):
-        # Rotate 180
         self._rotate_angle(180)
 
         for i in range(1, 7):
@@ -107,7 +106,6 @@ def main():
     executor.shutdown()
     spin_thread.join()
     rclpy.shutdown()
-    print("Execution finished")
 
 
 if __name__ == '__main__':
