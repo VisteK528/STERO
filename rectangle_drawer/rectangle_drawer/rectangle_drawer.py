@@ -8,6 +8,7 @@ import threading
 import time
 import math
 import numpy as np
+import os
 
 
 def quaternion_to_yaw(qx, qy, qz, qw):
@@ -27,6 +28,8 @@ class RectangleDrawer(Node):
         super().__init__("RectangleDrawer")
         self.declare_parameter("side_length", value=1.0)
         self.declare_parameter("loops", value=1)
+        self.declare_parameter("clockwise", value=False)
+        self.declare_parameter("export_path", value="")
 
         self._odom_subscriber = self.create_subscription(Odometry, "/mobile_base_controller/odom", self._update_odom, 10)
         self._true_position_subscriber = self.create_subscription(Odometry, "/ground_truth_odom", self._update_true_odom, 10)
@@ -47,7 +50,10 @@ class RectangleDrawer(Node):
 
         self._side_length = self.get_parameter("side_length").get_parameter_value().double_value
         self._loops = self.get_parameter("loops").get_parameter_value().integer_value
-        self._drive_speed = 0.3
+        self._clockwise = self.get_parameter("clockwise").get_parameter_value().bool_value
+        self._export_path = self.get_parameter("export_path").get_parameter_value().string_value
+
+        self._drive_speed = 0.2
         self._rotation_speed = 0.3
 
         self._temporary_orientation_errors = []
@@ -62,7 +68,7 @@ class RectangleDrawer(Node):
         self._cumulative_orientation_error = 0
         self._cumulative_position_error = 0
 
-        self._average_errors_length = 1000
+        self._average_errors_length = 100
 
     def generate_report(self):
         report = "\n===============================================\n"
@@ -153,10 +159,10 @@ class RectangleDrawer(Node):
                 self._publisher.publish(Twist())
                 break
 
-            angular_speed = self._rotation_speed
-            msg.angular.z = angular_speed if error > 0 else -angular_speed
+            msg.angular.z = self._rotation_speed if error > 0 else -self._rotation_speed
             self._publisher.publish(msg)
             time.sleep(0.01)
+        self._publisher.publish(Twist())
 
     def _drive_length(self, meters):
         start_x = self._x
@@ -164,7 +170,6 @@ class RectangleDrawer(Node):
 
         msg = Twist()
         msg.linear.x = self._drive_speed
-
         while math.sqrt(pow(start_x - self._x, 2) + pow(start_y - self._y, 2)) < meters:
             self._publisher.publish(msg)
             time.sleep(0.01)
@@ -173,29 +178,49 @@ class RectangleDrawer(Node):
 
     def run(self):
         self._start_clock = self.get_clock().now().nanoseconds
-        # Rotate 180
-        self._rotate_angle(180)
+        if self._clockwise:
+            self._rotate_angle(90)
+        else:
+            self._rotate_angle(180)
+        time.sleep(1)
 
-        for _ in range(self._loops):
+        for k in range(self._loops):
             for i in range(1, 5):
                 self._drive_length(self._side_length)
 
-                rotation_angle = 180 - 90 * i
-                if rotation_angle < 0:
-                    rotation_angle += 360
-                self._rotate_angle(rotation_angle)
+                if self._clockwise:
+                    rotation_angle = 90 + 90 * i
+                    if rotation_angle > 360:
+                        rotation_angle -= 360
+                    self._rotate_angle(rotation_angle)
+                else:
+                    rotation_angle = 180 - 90 * i
+                    if rotation_angle < 0:
+                        rotation_angle += 360
+                    self._rotate_angle(rotation_angle)
+
+            self.get_logger().info(f"Loop {k+1} completed!")
             self._calculate_loop_cumulative_error()
-    
+
         self.get_logger().info("Finished")
         self.get_logger().info(self.generate_report())
-        np.savetxt("/home/vistek528/Desktop/position_errors.csv", np.array(self._averaged_position_errors),
-                   delimiter=",")
-        np.savetxt("/home/vistek528/Desktop/orientation_errors.csv", np.array(self._averaged_orientation_errors),
-                   delimiter=",")
-        np.savetxt("/home/vistek528/Desktop/loop_orientation_errors.csv", np.array(self._loop_orientation_errors),
-                   delimiter=",")
-        np.savetxt("/home/vistek528/Desktop/loop_position_errors.csv", np.array(self._loop_orientation_errors),
-                   delimiter=",")
+
+        if self._export_path != "":
+            np.savetxt(os.path.join(self._export_path,
+                                    f"position_errors_loops={self._loops}_side_length={self._side_length}.csv"),
+                       np.array(self._averaged_position_errors), delimiter=",")
+
+            np.savetxt(os.path.join(self._export_path,
+                                    f"orientation_errors_loops={self._loops}_side_length={self._side_length}.csv"),
+                       np.array(self._averaged_orientation_errors), delimiter=",")
+
+            np.savetxt(os.path.join(self._export_path,
+                                    f"loop_orientation_errors_loops={self._loops}_side_length={self._side_length}.csv"),
+                       np.array(self._loop_orientation_errors), delimiter=",")
+
+            np.savetxt(os.path.join(self._export_path,
+                                    f"loop_position_errors_loops={self._loops}_side_length={self._side_length}.csv"),
+                       np.array(self._loop_position_errors), delimiter=",")
 
 
 def main():
