@@ -61,9 +61,9 @@ def public_nav_function(context, *args, **kwargs):
     tiago_2dnav = get_package_share_directory("tiago_2dnav")
     param_file = os.path.join(tiago_2dnav, "params", "tiago_" + base_type + "_nav_public_sim.yaml")
 
-    pal_maps = get_package_share_directory("hello_moveit")
+    our_maps = get_package_share_directory("hello_moveit")
 
-    map_path = os.path.join(pal_maps, "maps", world_name, "map.yaml")
+    map_path = os.path.join(our_maps, "maps", world_name, "map.yaml")
     rviz_config_file = os.path.join(tiago_2dnav, "config", "rviz", "navigation.rviz")
 
     nav_bringup_launch = include_scoped_launch_py_description(

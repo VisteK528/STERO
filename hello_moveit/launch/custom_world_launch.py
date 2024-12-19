@@ -72,22 +72,23 @@ def start_gzserver(context, *args, **kwargs):
         pass
 
     world_package = LaunchConfiguration('world_package').perform(context)
+    world_name = LaunchConfiguration('world_name').perform(context)
 
-    # Wyświetlenie dostępnych światów
-    available_worlds = list_available_worlds(world_package)
-    print("\nDostępne światy w pakiecie '{}':".format(world_package))
-    for i, world in enumerate(available_worlds, start=1):
-        print(f"{i}. {world}")
-
-    # Interaktywny wybór świata
-    world_choice = input("\nWybierz numer świata do uruchomienia: ")
-    world_choice = int(world_choice) - 1  # Indeksowanie od 0
-    if 0 <= world_choice < len(available_worlds):
-        world_name = available_worlds[world_choice]
-    else:
-        raise ValueError("Niepoprawny wybór świata!")
-
-    print(f"Wybrany świat: {world_name}")
+    # # Wyświetlenie dostępnych światów
+    # available_worlds = list_available_worlds(world_package)
+    # print("\nDostępne światy w pakiecie '{}':".format(world_package))
+    # for i, world in enumerate(available_worlds, start=1):
+    #     print(f"{i}. {world}")
+    #
+    # # Interaktywny wybór świata
+    # world_choice = input("\nWybierz numer świata do uruchomienia: ")
+    # world_choice = int(world_choice) - 1  # Indeksowanie od 0
+    # if 0 <= world_choice < len(available_worlds):
+    #     world_name = available_worlds[world_choice]
+    # else:
+    #     raise ValueError("Niepoprawny wybór świata!")
+    #
+    # print(f"Wybrany świat: {world_name}")
 
     # Walidacja pliku świata
     resolved_world_path = validate_world_path(world_package, world_name)

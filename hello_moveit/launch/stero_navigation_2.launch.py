@@ -96,6 +96,7 @@ def declare_actions(
         env_vars=[gazebo_model_path_env_var],
         launch_arguments={
             "world_package":  launch_args.world_package,
+            "world_name": launch_args.world_name,
             "model_paths": packages,
             "resource_paths": packages,
         })
