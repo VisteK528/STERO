@@ -1,18 +1,3 @@
-# Copyright (c) 2022 PAL Robotics S.L. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-
 import os
 from os import environ, pathsep
 
@@ -65,30 +50,9 @@ def validate_world_path(world_package, world_name):
 
 def start_gzserver(context, *args, **kwargs):
     pkg_path = get_package_share_directory('pal_gazebo_worlds')
-    priv_pkg_path = ''
-    try:
-        priv_pkg_path = get_package_share_directory('hello_moveit')
-    except Exception:
-        pass
 
     world_package = LaunchConfiguration('world_package').perform(context)
     world_name = LaunchConfiguration('world_name').perform(context)
-
-    # # Wyświetlenie dostępnych światów
-    # available_worlds = list_available_worlds(world_package)
-    # print("\nDostępne światy w pakiecie '{}':".format(world_package))
-    # for i, world in enumerate(available_worlds, start=1):
-    #     print(f"{i}. {world}")
-    #
-    # # Interaktywny wybór świata
-    # world_choice = input("\nWybierz numer świata do uruchomienia: ")
-    # world_choice = int(world_choice) - 1  # Indeksowanie od 0
-    # if 0 <= world_choice < len(available_worlds):
-    #     world_name = available_worlds[world_choice]
-    # else:
-    #     raise ValueError("Niepoprawny wybór świata!")
-    #
-    # print(f"Wybrany świat: {world_name}")
 
     # Walidacja pliku świata
     resolved_world_path = validate_world_path(world_package, world_name)
