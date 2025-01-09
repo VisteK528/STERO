@@ -24,14 +24,14 @@ class NavTester(Node):
         self._destination_room = self.get_parameter("room_name").get_parameter_value().string_value
 
         self._center_positions = {
-            "corridor1": {"easy": (-0.75, 2.75), "normal": (-0.75, 2.75), "hard": (-0.75, 2.75)},  # done
-            "corridor2": {"easy": (0.75, -2.4), "normal": (0.0, 0.0), "hard": (0.0, 0.0)},  # done
-            "corridor": {"easy": (0.0, 0.0), "normal": (0.0, 0.0), "hard": (0.0, 0.0)}, #done
-            "living_room": {"easy": (4.0, 1.7), "normal": (5.5, 2.0), "hard": (2.4, 3.3)}, #done
-            "kitchen": {"easy": (4.0, -1.7), "normal": (4.55, -2.54), "hard": (2.55, -2.92)}, #done
-            "room1": {"easy": (-4.0, 1.7), "normal": (-4.0, 3.0), "hard": (-2.9, 3.0)}, #done
-            "room2": {"easy": (-4.0, -1.7), "normal": (-4.69, -2.4), "hard": (-2.69, -0.56)}, #done
-            "wc": {"easy": (0.0, -5.2), "normal": (-1.24, -5.7), "hard": (1.05, -4.36)}, #TODO
+            "corridor1": {"easy": (-0.75, 2.75), "normal": (-0.75, 2.75), "hard": (-0.75, 2.75)},
+            "corridor2": {"easy": (0.75, -2.4), "normal": (0.0, 0.0), "hard": (0.0, 0.0)},
+            "corridor": {"easy": (0.0, 0.0), "normal": (0.0, 0.0), "hard": (0.0, 0.0)},
+            "living_room": {"easy": (4.0, 1.7), "normal": (5.5, 2.0), "hard": (2.4, 3.3)},
+            "kitchen": {"easy": (4.0, -1.7), "normal": (4.55, -2.54), "hard": (2.55, -2.92)},
+            "room1": {"easy": (-4.0, 1.7), "normal": (-4.0, 3.0), "hard": (-2.9, 3.0)},
+            "room2": {"easy": (-4.0, -1.7), "normal": (-4.69, -2.4), "hard": (-2.69, -0.56)},
+            "wc": {"easy": (0.0, -5.2), "normal": (-1.24, -5.7), "hard": (1.05, -4.36)},
         }
 
         self._finished = False
