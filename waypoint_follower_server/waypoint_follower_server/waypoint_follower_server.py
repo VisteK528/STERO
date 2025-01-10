@@ -43,24 +43,47 @@ class WaypointFollowerServer(Node):
         )
 
         self._current_pose = None
-        self._current_path = None
-        self._start_path_length = 0.0
-        self._start_path = None
-
-        self._paths = None
-        self._paths_lengths = None
 
         self._current_path_length = 0.0
         self._initial_pose = [(0.0, 0.0)]
         self._waypoints = None
 
+
+        # New variant
+        self._paths = []
+        self._paths_lengths = []
+        self._current_waypoint = None
+
+        self._current_path = None
+        self._current_path_length = 0.0
+        self._full_path_length = 0.0
+        self._requested_computation = False
+
+
     def setup(self):
         self._nav.setInitialPose(self._point_to_pose_msgs(self._initial_pose)[0])
+        self.get_logger().info("Waypoint follower server has started!")
 
     def _update_path_callback(self, msg: Path):
         self._current_path = msg.poses
         self._current_path_length = self.calculate_path_length(self._current_path)
         self.get_logger().info("Path updated")
+
+        # if self._current_waypoint is not None and not self._requested_computation:
+        #     if self._current_waypoint > 0:
+        #         start = (self._waypoints[self._current_waypoint-1].x,
+        #                  self._waypoints[self._current_waypoint-1].y)
+        #         goal = (self._waypoints[self._current_waypoint].x,
+        #                  self._waypoints[self._current_waypoint].y)
+        #         start, goal = self._point_to_pose_msgs([start, goal])
+        #         path = self._nav.getPath(start, goal, use_start=True)
+        #
+        #         self._paths[self._current_waypoint - 1] = path
+        #         self._paths_lengths[self._current_waypoint-1] = self.calculate_path_length(path.poses)
+        #         self._full_path_length = sum(self._paths_lengths)
+        #         self._requested_computation = True
+        # else:
+        #     self._requested_computation = False
 
     def _update_pose_callback(self, msg: PoseWithCovarianceStamped):
         self.get_logger().info("Updated")
@@ -84,8 +107,19 @@ class WaypointFollowerServer(Node):
         initial_pose.pose.orientation.w = 1.0
         self._nav.setInitialPose(initial_pose)
 
+        waypoints_converted = self._point_msgs_to_pose_msgs(self._waypoints)
+        waypoints_converted.insert(0, initial_pose)
+
+        self._full_path_length = 0.0
+        for i in range(1, len(waypoints_converted)):
+            path = self._nav.getPath(waypoints_converted[i-1], waypoints_converted[i], use_start=True)
+            path_length = self.calculate_path_length(path.poses)
+            self._paths.append(path)
+            self._paths_lengths.append(path_length)
+            self._full_path_length += path_length
+
         self._nav.waitUntilNav2Active()
-        self._nav.goThroughPoses(self._point_msgs_to_pose_msgs(self._waypoints))
+        self._nav.followWaypoints(self._point_msgs_to_pose_msgs(self._waypoints))
 
         rate = self.create_rate(1)
         while self._current_path is None:
@@ -93,10 +127,30 @@ class WaypointFollowerServer(Node):
 
         self._start_path_length = self._current_path_length
         while not self._nav.isTaskComplete():
-            percentage_completed = self.calculate_current_progress()
+            current_waypoint = self._nav.getFeedback().current_waypoint
+
+            # if self._current_waypoint is not None:
+            #     if current_waypoint > self._current_waypoint and self._current_waypoint != 0:
+            #         start = (self._waypoints[self._current_waypoint - 1].x,
+            #                  self._waypoints[self._current_waypoint - 1].y)
+            #         goal = (self._waypoints[self._current_waypoint].x,
+            #                 self._waypoints[self._current_waypoint].y)
+            #         start, goal = self._point_to_pose_msgs([start, goal])
+            #         path = self._nav.getPath(start, goal, use_start=True)
+            #
+            #         self._paths[self._current_waypoint - 1] = path
+            #         self._paths_lengths[
+            #             self._current_waypoint - 1] = self.calculate_path_length(
+            #             path.poses)
+            #         self._full_path_length = sum(self._paths_lengths)
+
+            self._current_waypoint = current_waypoint
+            percentage_completed = self.calculate_current_progress(current_waypoint)
+            self.get_logger().info(f"{current_waypoint}")
+
             feedback_message.percentage_completed = float(percentage_completed)
             self.get_logger().info(
-                f"Percentage completed: {percentage_completed:.2f}%")
+                 f"Percentage completed: {percentage_completed:.2f}%")
 
             goal_handle.publish_feedback(feedback_message)
             rate.sleep()
@@ -109,9 +163,10 @@ class WaypointFollowerServer(Node):
         self.get_logger().info("Job finished")
         return result
 
-    def calculate_current_progress(self) -> float:
-        left_distance = self.calculate_path_length(self._current_path)
-        return ((self._start_path_length - left_distance) / self._start_path_length) * 100.0
+    def calculate_current_progress(self, current_waypoint: int) -> float:
+        driven_distance = sum(self._paths_lengths[:current_waypoint+1]) - self.calculate_path_length(self._current_path)
+
+        return (driven_distance/ self._full_path_length)* 100.0
 
     @staticmethod
     def calculate_distance_between_poses(pose1: Pose, pose2: Pose) -> float:

@@ -20,7 +20,14 @@ class WaypointFollowerClient(Node):
         self._waypoint_client = ActionClient(self, SteroNavWaypointFollow, "/stero_nav_waypoint",
                                              goal_service_qos_profile=custom_qos, result_service_qos_profile=custom_qos)
         self._finished = False
-        self._points = [(-4.0, 1.7), (-0.75, 2.75), (0.0, 0.0), (0.75, -2.4), (4.0, -1.7), (0.0, -5.2)]
+        # self._points = [(-4.0, 1.7), (-0.75, 2.75), (0.0, 0.0), (0.75, -2.4), (4.0, -1.7), (0.0, -5.2)]
+        #
+        self._points = [(0.0, 0.0), (0.75, -2.4), (4.0, -1.7)]
+
+        # self._points = [(4.0, -1.7), (0.75, -2.4), (0.0, 0.0),
+        #                 (-4.0, 1.7)]
+
+        # self._points = [(-4.0, 1.7), (0.0, 0.0), (4.0, -1.7)]
 
     def _goal_response_callback(self, future):
         goal_handle = future.result()
