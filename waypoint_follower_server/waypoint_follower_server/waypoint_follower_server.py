@@ -7,7 +7,7 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point, Pose, Twist
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from nav2_simple_commander.robot_navigator import BasicNavigator
+from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 from nav_msgs.msg import Path
 import math
 from enum import Enum
@@ -57,13 +57,17 @@ class WaypointFollowerServer(Node):
         self._head_controller_publisher = self.create_publisher(JointTrajectory, "/head_controller/joint_trajectory", qos_profile=custom_qos, callback_group=ReentrantCallbackGroup())
         self._head_controller_timer = self.create_timer(1, self._head_control_callback, callback_group=ReentrantCallbackGroup())
 
+        # Parameters
+        self._ANGULAR_VELOCITY_THRESHOLD = 0.2
+        self._HEAD_MOVE_ANGLE = math.pi / 4
+        self._PERCENTAGE_FEEDBACK_RATE = 5
+
+        # For path percentage completion tracking
         self._current_pose = None
         self._current_rotation = RotationDirection.NOROTATION
 
         self._waypoints = None
 
-
-        # New variant
         self._paths = []
         self._paths_lengths = []
         self._current_waypoint = None
@@ -100,9 +104,9 @@ class WaypointFollowerServer(Node):
         self._full_path_length = 0.0
 
     def _mobile_base_velocity_callback(self, msg: Twist):
-        if msg.angular.z >= 0.2:
+        if msg.angular.z >= self._ANGULAR_VELOCITY_THRESHOLD:
             self._current_rotation = RotationDirection.ANTICLOCKWISE
-        elif msg.angular.z <= -0.2:
+        elif msg.angular.z <= -self._ANGULAR_VELOCITY_THRESHOLD:
             self._current_rotation = RotationDirection.CLOCKWISE
         else:
             self._current_rotation = RotationDirection.NOROTATION
@@ -118,10 +122,10 @@ class WaypointFollowerServer(Node):
 
         if self._current_rotation == RotationDirection.CLOCKWISE:
             #self.get_logger().info("Rotating clockwise!")
-            point.positions = [-math.pi/4, 0.0]
+            point.positions = [-self._HEAD_MOVE_ANGLE, 0.0]
         elif self._current_rotation == RotationDirection.ANTICLOCKWISE:
             #self.get_logger().info("Rotating anticlockwise!")
-            point.positions = [math.pi/4, 0.0]
+            point.positions = [self._HEAD_MOVE_ANGLE, 0.0]
         else:
             point.positions = [0.0, 0.0]
 
@@ -148,10 +152,14 @@ class WaypointFollowerServer(Node):
     def _drive_waypoints_callback(self, goal_request):
         self.reset_before_action()
         self._waypoints = goal_request.waypoints
-        return GoalResponse.ACCEPT
+
+        if len(self._waypoints) > 0:
+            return GoalResponse.ACCEPT
+        return GoalResponse.REJECT
 
     def _execute_callback(self, goal_handle):
         feedback_message = SteroNavWaypointFollow.Feedback()
+        result = SteroNavWaypointFollow.Result()
 
         waypoints_converted = self._point_msgs_to_pose_msgs(self._waypoints)
         waypoints_converted.insert(0, self._current_pose)
@@ -170,15 +178,14 @@ class WaypointFollowerServer(Node):
         self._nav.waitUntilNav2Active()
         self._nav.followWaypoints(self._point_msgs_to_pose_msgs(self._waypoints))
 
-        rate = self.create_rate(5)
+        rate = self.create_rate(self._PERCENTAGE_FEEDBACK_RATE)
         while self._current_path is None:
             pass
 
         self._start_path_length = self._current_path_length
         while not self._nav.isTaskComplete():
-            current_waypoint = self._nav.getFeedback().current_waypoint
-            self._current_waypoint = current_waypoint
-            percentage_completed = self.calculate_current_progress(current_waypoint)
+            self._current_waypoint = self._nav.getFeedback().current_waypoint
+            percentage_completed = self.calculate_current_progress()
 
 
             feedback_message.percentage_completed = float(percentage_completed)
@@ -187,31 +194,43 @@ class WaypointFollowerServer(Node):
             goal_handle.publish_feedback(feedback_message)
             rate.sleep()
 
+            if goal_handle.is_cancel_requested:
+                self._nav.cancelTask()
+                self.get_logger().info("Goal canceled!")
+                result.status = 2
+                break
+
+
         self._current_path = []
-        percentage_completed = self.calculate_current_progress(self._current_waypoint)
+        percentage_completed = self.calculate_current_progress()
         feedback_message.percentage_completed = float(percentage_completed)
         self.get_logger().info(f"Percentage completed: {percentage_completed:.2f}%")
         goal_handle.publish_feedback(feedback_message)
         rate.sleep()
 
-        goal_handle.succeed()
-        result = SteroNavWaypointFollow.Result()
-        result.status = 0
+        nav_result = self._nav.getResult()
 
-        self.get_logger().info("Job finished")
+        if nav_result == TaskResult.SUCCEEDED:
+            goal_handle.succeed()
+            result.status = 0
+            self.get_logger().info("Goal succeeded!")
+        elif nav_result == TaskResult.FAILED:
+            goal_handle.failed()
+            result.status = 1
+            self.get_logger().info("Goal failed!")
+
         return result
 
-    def calculate_current_progress(self, current_waypoint: int) -> float:
+    def calculate_current_progress(self) -> float:
         current_path_to_be_driven = self.calculate_path_length(self._current_path)
         current_path_already_driven = self.calculate_path_length(self._already_driven_paths[self._current_waypoint - 1])
         already_driven = sum(self._already_driven_paths_lengths[:(self._current_waypoint - 1)])
         yet_to_be_driven = sum(self._paths_lengths[self._current_waypoint+1:])
 
         self._already_driven_paths_lengths[self._current_waypoint - 1] = current_path_already_driven
-        self.get_logger()
         driven = already_driven + current_path_already_driven
         full_path_length = already_driven + current_path_already_driven + current_path_to_be_driven + yet_to_be_driven
-        self.get_logger().info(f"Driven: {driven:.3f} /  {full_path_length:.3f} / {self._current_waypoint} / {current_path_to_be_driven:.3f} / {yet_to_be_driven:.3f}")
+        # self.get_logger().info(f"Driven: {driven:.3f} /  {full_path_length:.3f} / {self._current_waypoint} / {current_path_to_be_driven:.3f} / {yet_to_be_driven:.3f}")
         return (driven / full_path_length) * 100.0
 
 

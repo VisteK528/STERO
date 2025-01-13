@@ -56,7 +56,7 @@ class WaypointFollowerClient(Node):
         action_request.header.frame_id = "map"
         action_request.header.stamp = self.get_clock().now().to_msg()
 
-        self._waypoint_client.wait_for_server(1)
+        self._waypoint_client.wait_for_server(10)
         future = self._waypoint_client.send_goal_async(action_request, feedback_callback=self._feedback_callback)
         future.add_done_callback(self._goal_response_callback)
 
