@@ -5,10 +5,12 @@ from stero_nav_msgs.action import SteroNavWaypointFollow
 from rclpy.action import ActionServer, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point, Pose
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point, Pose, Twist
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from nav2_simple_commander.robot_navigator import BasicNavigator
 from nav_msgs.msg import Path
 import math
+from enum import Enum
 
 custom_qos = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
@@ -16,6 +18,11 @@ custom_qos = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=10,
 )
+
+class RotationDirection(Enum):
+    NOROTATION = 0
+    CLOCKWISE = 1
+    ANTICLOCKWISE = 2
 
 
 class WaypointFollowerServer(Node):
@@ -42,10 +49,17 @@ class WaypointFollowerServer(Node):
             Path, "/plan", self._update_path_callback, 100, callback_group=ReentrantCallbackGroup()
         )
 
-        self._current_pose = None
+        self._velocity_subscriber= self.create_subscription(Twist, "/mobile_base_controller/cmd_vel_unstamped",
+                                                            self._mobile_base_velocity_callback,
+                                                            10,
+                                                            callback_group=ReentrantCallbackGroup())
 
-        self._current_path_length = 0.0
-        self._initial_pose = [(0.0, 0.0)]
+        self._head_controller_publisher = self.create_publisher(JointTrajectory, "/head_controller/joint_trajectory", qos_profile=custom_qos, callback_group=ReentrantCallbackGroup())
+        self._head_controller_timer = self.create_timer(1, self._head_control_callback, callback_group=ReentrantCallbackGroup())
+
+        self._current_pose = None
+        self._current_rotation = RotationDirection.NOROTATION
+
         self._waypoints = None
 
 
@@ -54,119 +68,152 @@ class WaypointFollowerServer(Node):
         self._paths_lengths = []
         self._current_waypoint = None
 
+        self._already_driven_paths = None
+        self._already_driven_paths_lengths = None
+
         self._current_path = None
         self._current_path_length = 0.0
         self._full_path_length = 0.0
-        self._requested_computation = False
 
 
     def setup(self):
-        self._nav.setInitialPose(self._point_to_pose_msgs(self._initial_pose)[0])
+        self.get_logger().info("Starting Waypoint follower server...")
+        while self._current_pose is None:
+            rclpy.spin_once(self)
+
+        self.get_logger().info(f"Starting work at P=({self._current_pose.pose.position.x:.2f},{self._current_pose.pose.position.y:.2f})")
+        self._nav.setInitialPose(self._current_pose)
         self.get_logger().info("Waypoint follower server has started!")
+
+    def reset_before_action(self):
+        self._waypoints = None
+
+        self._paths = []
+        self._paths_lengths = []
+        self._current_waypoint = None
+
+        self._already_driven_paths = None
+        self._already_driven_paths_lengths = None
+
+        self._current_path = None
+        self._current_path_length = 0.0
+        self._full_path_length = 0.0
+
+    def _mobile_base_velocity_callback(self, msg: Twist):
+        if msg.angular.z >= 0.2:
+            self._current_rotation = RotationDirection.ANTICLOCKWISE
+        elif msg.angular.z <= -0.2:
+            self._current_rotation = RotationDirection.CLOCKWISE
+        else:
+            self._current_rotation = RotationDirection.NOROTATION
+
+    def _head_control_callback(self):
+        msg = JointTrajectory()
+        msg.joint_names = ["head_1_joint", "head_2_joint"]
+
+        point = JointTrajectoryPoint()
+        point.time_from_start.sec = 1
+        point.velocities = [0.0, 0.0]
+        point.accelerations = [0.0, 0.0]
+
+        if self._current_rotation == RotationDirection.CLOCKWISE:
+            #self.get_logger().info("Rotating clockwise!")
+            point.positions = [-math.pi/4, 0.0]
+        elif self._current_rotation == RotationDirection.ANTICLOCKWISE:
+            #self.get_logger().info("Rotating anticlockwise!")
+            point.positions = [math.pi/4, 0.0]
+        else:
+            point.positions = [0.0, 0.0]
+
+        msg.points.append(point)
+        self._head_controller_publisher.publish(msg)
+
 
     def _update_path_callback(self, msg: Path):
         self._current_path = msg.poses
         self._current_path_length = self.calculate_path_length(self._current_path)
-        self.get_logger().info("Path updated")
 
-        # if self._current_waypoint is not None and not self._requested_computation:
-        #     if self._current_waypoint > 0:
-        #         start = (self._waypoints[self._current_waypoint-1].x,
-        #                  self._waypoints[self._current_waypoint-1].y)
-        #         goal = (self._waypoints[self._current_waypoint].x,
-        #                  self._waypoints[self._current_waypoint].y)
-        #         start, goal = self._point_to_pose_msgs([start, goal])
-        #         path = self._nav.getPath(start, goal, use_start=True)
-        #
-        #         self._paths[self._current_waypoint - 1] = path
-        #         self._paths_lengths[self._current_waypoint-1] = self.calculate_path_length(path.poses)
-        #         self._full_path_length = sum(self._paths_lengths)
-        #         self._requested_computation = True
-        # else:
-        #     self._requested_computation = False
 
     def _update_pose_callback(self, msg: PoseWithCovarianceStamped):
-        self.get_logger().info("Updated")
+        # self.get_logger().info("Updated")
         self._current_pose = PoseStamped()
         self._current_pose.pose = msg.pose.pose
         self._current_pose.header = msg.header
 
+        if self._current_waypoint is not None:
+            if self._current_waypoint > 0:
+                self._already_driven_paths[self._current_waypoint-1].append(self._current_pose)
+
+
     def _drive_waypoints_callback(self, goal_request):
+        self.reset_before_action()
         self._waypoints = goal_request.waypoints
         return GoalResponse.ACCEPT
 
     def _execute_callback(self, goal_handle):
         feedback_message = SteroNavWaypointFollow.Feedback()
 
-        initial_pose = PoseStamped()
-        initial_pose.header.frame_id = 'map'
-        initial_pose.header.stamp = self._nav.get_clock().now().to_msg()
-        initial_pose.pose.position.x = self._current_pose.pose.position.x
-        initial_pose.pose.position.y = self._current_pose.pose.position.y
-        initial_pose.pose.orientation.z = 0.0
-        initial_pose.pose.orientation.w = 1.0
-        self._nav.setInitialPose(initial_pose)
-
         waypoints_converted = self._point_msgs_to_pose_msgs(self._waypoints)
-        waypoints_converted.insert(0, initial_pose)
+        waypoints_converted.insert(0, self._current_pose)
 
         self._full_path_length = 0.0
+        self._already_driven_paths = [[] for _ in range(len(self._waypoints) - 1)]
+        self._already_driven_paths_lengths = [0 for _ in range(len(self._waypoints) - 1)]
         for i in range(1, len(waypoints_converted)):
             path = self._nav.getPath(waypoints_converted[i-1], waypoints_converted[i], use_start=True)
             path_length = self.calculate_path_length(path.poses)
             self._paths.append(path)
+
             self._paths_lengths.append(path_length)
             self._full_path_length += path_length
 
         self._nav.waitUntilNav2Active()
         self._nav.followWaypoints(self._point_msgs_to_pose_msgs(self._waypoints))
 
-        rate = self.create_rate(1)
+        rate = self.create_rate(5)
         while self._current_path is None:
             pass
 
         self._start_path_length = self._current_path_length
         while not self._nav.isTaskComplete():
             current_waypoint = self._nav.getFeedback().current_waypoint
-
-            # if self._current_waypoint is not None:
-            #     if current_waypoint > self._current_waypoint and self._current_waypoint != 0:
-            #         start = (self._waypoints[self._current_waypoint - 1].x,
-            #                  self._waypoints[self._current_waypoint - 1].y)
-            #         goal = (self._waypoints[self._current_waypoint].x,
-            #                 self._waypoints[self._current_waypoint].y)
-            #         start, goal = self._point_to_pose_msgs([start, goal])
-            #         path = self._nav.getPath(start, goal, use_start=True)
-            #
-            #         self._paths[self._current_waypoint - 1] = path
-            #         self._paths_lengths[
-            #             self._current_waypoint - 1] = self.calculate_path_length(
-            #             path.poses)
-            #         self._full_path_length = sum(self._paths_lengths)
-
             self._current_waypoint = current_waypoint
             percentage_completed = self.calculate_current_progress(current_waypoint)
-            self.get_logger().info(f"{current_waypoint}")
+
 
             feedback_message.percentage_completed = float(percentage_completed)
-            self.get_logger().info(
-                 f"Percentage completed: {percentage_completed:.2f}%")
+            self.get_logger().info(f"Percentage completed: {percentage_completed:.2f}%")
 
             goal_handle.publish_feedback(feedback_message)
             rate.sleep()
 
-        self.get_logger().info("Exiting...")
-        goal_handle.succeed()
+        self._current_path = []
+        percentage_completed = self.calculate_current_progress(self._current_waypoint)
+        feedback_message.percentage_completed = float(percentage_completed)
+        self.get_logger().info(f"Percentage completed: {percentage_completed:.2f}%")
+        goal_handle.publish_feedback(feedback_message)
+        rate.sleep()
 
+        goal_handle.succeed()
         result = SteroNavWaypointFollow.Result()
         result.status = 0
+
         self.get_logger().info("Job finished")
         return result
 
     def calculate_current_progress(self, current_waypoint: int) -> float:
-        driven_distance = sum(self._paths_lengths[:current_waypoint+1]) - self.calculate_path_length(self._current_path)
+        current_path_to_be_driven = self.calculate_path_length(self._current_path)
+        current_path_already_driven = self.calculate_path_length(self._already_driven_paths[self._current_waypoint - 1])
+        already_driven = sum(self._already_driven_paths_lengths[:(self._current_waypoint - 1)])
+        yet_to_be_driven = sum(self._paths_lengths[self._current_waypoint+1:])
 
-        return (driven_distance/ self._full_path_length)* 100.0
+        self._already_driven_paths_lengths[self._current_waypoint - 1] = current_path_already_driven
+        self.get_logger()
+        driven = already_driven + current_path_already_driven
+        full_path_length = already_driven + current_path_already_driven + current_path_to_be_driven + yet_to_be_driven
+        self.get_logger().info(f"Driven: {driven:.3f} /  {full_path_length:.3f} / {self._current_waypoint} / {current_path_to_be_driven:.3f} / {yet_to_be_driven:.3f}")
+        return (driven / full_path_length) * 100.0
+
 
     @staticmethod
     def calculate_distance_between_poses(pose1: Pose, pose2: Pose) -> float:

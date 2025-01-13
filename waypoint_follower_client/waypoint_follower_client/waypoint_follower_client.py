@@ -6,6 +6,7 @@ from rclpy.action import ActionClient
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from geometry_msgs.msg import Point
 import threading
+import numpy as np
 
 custom_qos = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
@@ -22,12 +23,13 @@ class WaypointFollowerClient(Node):
         self._finished = False
         # self._points = [(-4.0, 1.7), (-0.75, 2.75), (0.0, 0.0), (0.75, -2.4), (4.0, -1.7), (0.0, -5.2)]
         #
-        self._points = [(0.0, 0.0), (0.75, -2.4), (4.0, -1.7)]
+        # self._points = [(0.0, 0.0), (0.75, -2.4), (4.0, -1.7)]
 
-        # self._points = [(4.0, -1.7), (0.75, -2.4), (0.0, 0.0),
-        #                 (-4.0, 1.7)]
+        self._points = [(4.0, -1.7), (0.75, -2.4), (0.0, 0.0),
+                        (-4.0, 1.7)]
 
         # self._points = [(-4.0, 1.7), (0.0, 0.0), (4.0, -1.7)]
+        self._percentage_completed = []
 
     def _goal_response_callback(self, future):
         goal_handle = future.result()
@@ -43,6 +45,7 @@ class WaypointFollowerClient(Node):
     def _done_callback(self, future):
         self._end_result = future.result()
         self.get_logger().info("Desired pose achieved!")
+        np.savetxt("/home/vistek528/Desktop/percentage_completed.csv", np.array(self._percentage_completed))
         self._finished = True
 
     def run(self):
@@ -54,13 +57,17 @@ class WaypointFollowerClient(Node):
         action_request.header.stamp = self.get_clock().now().to_msg()
 
         self._waypoint_client.wait_for_server(1)
-        future = self._waypoint_client.send_goal_async(action_request)
+        future = self._waypoint_client.send_goal_async(action_request, feedback_callback=self._feedback_callback)
         future.add_done_callback(self._goal_response_callback)
 
         while not self._finished:
             pass
 
         self.get_logger().info("Move finished successfully!")
+
+    def _feedback_callback(self, msg: SteroNavWaypointFollow.Feedback):
+        self._percentage_completed.append(msg.feedback.percentage_completed)
+        self.get_logger().info(f"Percentage completed: {msg.feedback.percentage_completed:.2f}%")
 
     @staticmethod
     def _points_to_point_msg_list(points: list) -> list[Point]:
