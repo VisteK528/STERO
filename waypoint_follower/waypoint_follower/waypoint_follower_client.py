@@ -25,10 +25,13 @@ class WaypointFollowerClient(Node):
         #
         # self._points = [(0.0, 0.0), (0.75, -2.4), (4.0, -1.7)]
 
+
         self._points = [(4.0, -1.7), (0.75, -2.4), (0.0, 0.0),
                         (-4.0, 1.7)]
 
         # self._points = [(-4.0, 1.7), (0.0, 0.0), (4.0, -1.7)]
+
+        # self._points = [(-4.0, 1.7), (0.0, 0.0), (0.0, -5.2), (0.75, -2.4), (4.0, -1.7)]
         self._percentage_completed = []
 
     def _goal_response_callback(self, future):

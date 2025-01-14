@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'waypoint_follower_server'
+package_name = 'waypoint_follower'
 
 setup(
     name=package_name,
@@ -20,7 +20,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'waypoint_follower_server = waypoint_follower_server.waypoint_follower_server:main'
+            'waypoint_follower_server = waypoint_follower.waypoint_follower_server:main',
+            'waypoint_follower_client = waypoint_follower.waypoint_follower_client:main'
+
         ],
     },
 )

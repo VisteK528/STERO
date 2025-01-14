@@ -161,6 +161,8 @@ class WaypointFollowerServer(Node):
         feedback_message = SteroNavWaypointFollow.Feedback()
         result = SteroNavWaypointFollow.Result()
 
+        self._nav.waitUntilNav2Active()
+
         waypoints_converted = self._point_msgs_to_pose_msgs(self._waypoints)
         waypoints_converted.insert(0, self._current_pose)
 
@@ -175,7 +177,6 @@ class WaypointFollowerServer(Node):
             self._paths_lengths.append(path_length)
             self._full_path_length += path_length
 
-        self._nav.waitUntilNav2Active()
         self._nav.followWaypoints(self._point_msgs_to_pose_msgs(self._waypoints))
 
         rate = self.create_rate(self._PERCENTAGE_FEEDBACK_RATE)
@@ -188,7 +189,7 @@ class WaypointFollowerServer(Node):
             percentage_completed = self.calculate_current_progress()
 
 
-            feedback_message.percentage_completed = float(percentage_completed)
+            feedback_message.percentage_completed = round(float(percentage_completed), 2)
             self.get_logger().info(f"Percentage completed: {percentage_completed:.2f}%")
 
             goal_handle.publish_feedback(feedback_message)
@@ -203,7 +204,7 @@ class WaypointFollowerServer(Node):
 
         self._current_path = []
         percentage_completed = self.calculate_current_progress()
-        feedback_message.percentage_completed = float(percentage_completed)
+        feedback_message.percentage_completed = round(float(percentage_completed), 2)
         self.get_logger().info(f"Percentage completed: {percentage_completed:.2f}%")
         goal_handle.publish_feedback(feedback_message)
         rate.sleep()
